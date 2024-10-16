@@ -12,24 +12,22 @@ impl Compete for Robot {
     async fn autonomous(&mut self) {
         let handler = &mut self.0;
         loop {
-            if let Some(vec) = brain_helper::read_pkts_serial() {
-                for pkt in vec {
-                    match pkt {
-                        ToBrain::RequestDeviceInfo => {
-                            brain_helper::write_pkt_serial(handler.get_device_list());
-                        }
-                        ToBrain::RequestControllerInfo => {}
-                        ToBrain::SetMotors(targets) => handler.set_motors(targets),
-                        ToBrain::RequestCompState => {
-                            brain_helper::write_pkt_serial(ToRobot::CompState(
-                                protocol::CompState::Auton,
-                            ));
-                        }
-                        ToBrain::RequestEncoderState => {}
-                        ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(gearsets),
-                        ToBrain::Ping(v) => {
-                            brain_helper::write_pkt_serial(ToRobot::Pong(v));
-                        }
+            while let Some(pkt) = brain_helper::read_pkt_serial() {
+                match pkt {
+                    ToBrain::RequestDeviceInfo => {
+                        brain_helper::write_pkt_serial(handler.get_device_list());
+                    }
+                    ToBrain::RequestControllerInfo => {}
+                    ToBrain::SetMotors(targets) => handler.set_motors(targets),
+                    ToBrain::RequestCompState => {
+                        brain_helper::write_pkt_serial(ToRobot::CompState(
+                            protocol::CompState::Auton,
+                        ));
+                    }
+                    ToBrain::RequestEncoderState => {}
+                    ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(gearsets),
+                    ToBrain::Ping(v) => {
+                        brain_helper::write_pkt_serial(ToRobot::Pong(v));
                     }
                 }
             }
@@ -41,26 +39,24 @@ impl Compete for Robot {
     async fn driver(&mut self) {
         let handler = &mut self.0;
         loop {
-            if let Some(vec) = brain_helper::read_pkts_serial() {
-                for pkt in vec {
-                    match pkt {
-                        ToBrain::RequestDeviceInfo => {
-                            brain_helper::write_pkt_serial(handler.get_device_list());
-                        }
-                        ToBrain::RequestControllerInfo => {
-                            brain_helper::write_pkt_serial(handler.get_controller_state());
-                        }
-                        ToBrain::SetMotors(targets) => handler.set_motors(targets),
-                        ToBrain::RequestCompState => {
-                            brain_helper::write_pkt_serial(ToRobot::CompState(
-                                protocol::CompState::Driver,
-                            ));
-                        }
-                        ToBrain::RequestEncoderState => {}
-                        ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(gearsets),
-                        ToBrain::Ping(v) => {
-                            brain_helper::write_pkt_serial(ToRobot::Pong(v));
-                        }
+            while let Some(pkt) = brain_helper::read_pkt_serial() {
+                match pkt {
+                    ToBrain::RequestDeviceInfo => {
+                        brain_helper::write_pkt_serial(handler.get_device_list());
+                    }
+                    ToBrain::RequestControllerInfo => {
+                        brain_helper::write_pkt_serial(handler.get_controller_state());
+                    }
+                    ToBrain::SetMotors(targets) => handler.set_motors(targets),
+                    ToBrain::RequestCompState => {
+                        brain_helper::write_pkt_serial(ToRobot::CompState(
+                            protocol::CompState::Driver,
+                        ));
+                    }
+                    ToBrain::RequestEncoderState => {}
+                    ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(gearsets),
+                    ToBrain::Ping(v) => {
+                        brain_helper::write_pkt_serial(ToRobot::Pong(v));
                     }
                 }
             }
@@ -144,7 +140,7 @@ impl ComponentHandler {
             if let Some(motor_control) = v {
                 motor.transform(PortState::Motor);
                 if let SmartPortDevice::Motor(m) = motor {
-                    m.set_target(motor_control).unwrap();
+                    let _ = m.set_target(motor_control);
                 }
             }
         }
@@ -155,7 +151,7 @@ impl ComponentHandler {
             if let Some(gearset) = v {
                 motor.transform(PortState::Motor);
                 if let SmartPortDevice::Motor(m) = motor {
-                    m.set_gearset(gearset).unwrap();
+                    let _ = m.set_gearset(gearset);
                 }
             }
         }
