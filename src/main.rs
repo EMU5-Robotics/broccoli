@@ -1,8 +1,10 @@
 #![no_main]
 #![no_std]
 
+extern crate alloc;
+
 use brain_helper::{
-    protocol::{self, ToBrain, ToRobot},
+    protocol::{self, *},
     vexide::{self, prelude::*},
 };
 
@@ -12,7 +14,7 @@ impl Compete for Robot {
     async fn autonomous(&mut self) {
         let handler = &mut self.0;
         loop {
-            while let Some(pkt) = brain_helper::read_pkt_serial() {
+            /*while let Some(pkt) = brain_helper::read_pkt_serial() {
                 match pkt {
                     ToBrain::RequestDeviceInfo => {
                         brain_helper::write_pkt_serial(handler.get_device_list());
@@ -30,7 +32,7 @@ impl Compete for Robot {
                         brain_helper::write_pkt_serial(ToRobot::Pong(v));
                     }
                 }
-            }
+            }*/
 
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
         }
@@ -38,27 +40,57 @@ impl Compete for Robot {
 
     async fn driver(&mut self) {
         let handler = &mut self.0;
+        /*vexide::devices::screen::Text::new(":3", vexide::devices::screen::TextSize::Large, [0, 0])
+        .fill(&mut handler.screen, 0xFFFFFFu32);*/
+        let mut counter = 0;
+        let mut num_packets = 0;
         loop {
-            while let Some(pkt) = brain_helper::read_pkt_serial() {
-                match pkt {
+            while let Some(ref pkt) = brain_helper::read_pkt_serial() {
+                vexide::devices::screen::Text::new(
+                    &alloc::format!("{pkt:?}"),
+                    vexide::devices::screen::TextSize::Large,
+                    [0, (counter % 5) * 30],
+                )
+                .fill(&mut handler.screen, 0xFFFFFFu32);
+                vexide::devices::screen::Text::new(
+                    &alloc::format!("{counter:?}"),
+                    vexide::devices::screen::TextSize::Large,
+                    [0, 6 * 30],
+                )
+                .fill(&mut handler.screen, 0xFFFFFFu32);
+                counter += 1;
+                num_packets += 1;
+
+                handler.set_motors(pkt.set_motors);
+                handler.set_gearsets(pkt.set_motor_gearsets);
+
+                let mut to_robot_packet = ToRobot::default();
+                to_robot_packet.comp_state = protocol::CompState::Driver;
+                to_robot_packet.device_list = Some(handler.get_device_list());
+                to_robot_packet.controller_state = Some(handler.get_controller_state());
+                to_robot_packet.encoder_state = handler.get_encoder_states();
+
+                brain_helper::write_pkt_serial(to_robot_packet);
+
+                /*match pkt {
                     ToBrain::RequestDeviceInfo => {
                         brain_helper::write_pkt_serial(handler.get_device_list());
                     }
                     ToBrain::RequestControllerInfo => {
                         brain_helper::write_pkt_serial(handler.get_controller_state());
                     }
-                    ToBrain::SetMotors(targets) => handler.set_motors(targets),
+                    ToBrain::SetMotors(targets) => handler.set_motors(*targets),
                     ToBrain::RequestCompState => {
                         brain_helper::write_pkt_serial(ToRobot::CompState(
                             protocol::CompState::Driver,
                         ));
                     }
                     ToBrain::RequestEncoderState => {}
-                    ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(gearsets),
+                    ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(*gearsets),
                     ToBrain::Ping(v) => {
-                        brain_helper::write_pkt_serial(ToRobot::Pong(v));
+                        brain_helper::write_pkt_serial(ToRobot::Pong(v.clone()));
                     }
-                }
+                }*/
             }
 
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
@@ -82,6 +114,7 @@ pub enum SmartPortDevice {
 }
 
 use protocol::{AdiPortState, PortState};
+use vexide::devices::screen::Fill;
 impl SmartPortDevice {
     pub fn get_type(&self) -> PortState {
         match self {
@@ -131,6 +164,7 @@ pub struct ComponentHandler {
     smart_ports: [SmartPortDevice; 21],
     adi_ports: [AdiPortDevice; 8],
     primary_controller: Controller,
+    screen: vexide::devices::screen::Screen,
 }
 
 impl ComponentHandler {
@@ -156,13 +190,13 @@ impl ComponentHandler {
             }
         }
     }
-    pub fn get_device_list(&self) -> ToRobot {
-        ToRobot::DevicesList(protocol::DevicesList {
+    pub fn get_device_list(&self) -> DevicesList {
+        DevicesList {
             smart_ports: self.smart_ports.each_ref().map(|v| v.get_type()),
             adi_ports: self.adi_ports.each_ref().map(|v| v.get_type()),
-        })
+        }
     }
-    pub fn get_encoder_states(&mut self) -> ToRobot {
+    pub fn get_encoder_states(&mut self) -> [EncoderState; 21] {
         let mut encoder_states = [protocol::EncoderState::None; 21];
         for (i, possible_smart_port) in self.smart_ports.iter_mut().enumerate() {
             if possible_smart_port.get_type() == PortState::Encoder {
@@ -174,9 +208,9 @@ impl ComponentHandler {
                 }
             }
         }
-        ToRobot::EncoderState(encoder_states)
+        encoder_states
     }
-    pub fn get_controller_state(&self) -> ToRobot {
+    pub fn get_controller_state(&self) -> ControllerState {
         use protocol::controller::*;
         let mut controller_state = protocol::ControllerState::default();
 
@@ -204,7 +238,7 @@ impl ComponentHandler {
         controller_state.axis[2] = self.primary_controller.right_stick.x().unwrap_or(0.0);
         controller_state.axis[3] = self.primary_controller.right_stick.y().unwrap_or(0.0);
 
-        ToRobot::ControllerState(controller_state)
+        controller_state
     }
 }
 
@@ -222,6 +256,7 @@ impl From<Peripherals> for ComponentHandler {
             ]
             .map(|v| AdiPortDevice::Raw(v)),
             primary_controller: v.primary_controller,
+            screen: v.screen,
         }
     }
 }

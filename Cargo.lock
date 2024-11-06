@@ -32,7 +32,6 @@ checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 [[package]]
 name = "brain_helper"
 version = "0.1.0"
-source = "git+ssh://git@github.com/EMU5-Robotics/transport.git?rev=994fd07da70f95300c077c7f1b5a9c535df5b2a5#994fd07da70f95300c077c7f1b5a9c535df5b2a5"
 dependencies = [
  "protocol",
  "vex-sdk",
@@ -250,7 +249,6 @@ dependencies = [
 [[package]]
 name = "protocol"
 version = "0.1.0"
-source = "git+ssh://git@github.com/EMU5-Robotics/transport.git?rev=994fd07da70f95300c077c7f1b5a9c535df5b2a5#994fd07da70f95300c077c7f1b5a9c535df5b2a5"
 dependencies = [
  "postcard",
  "serde",

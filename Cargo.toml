@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-brain_helper = { git = "ssh://git@github.com/EMU5-Robotics/transport.git", rev = "994fd07da70f95300c077c7f1b5a9c535df5b2a5" }
+brain_helper = { git = "ssh://git@github.com/EMU5-Robotics/transport.git", rev = "019726eff048f8e092bbbf380992480c69e30b63" }
 vexide = "0.4.1"
