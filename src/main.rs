@@ -12,57 +12,28 @@ struct Robot(ComponentHandler);
 
 impl Compete for Robot {
     async fn autonomous(&mut self) {
-        let handler = &mut self.0;
+        let _handler = &mut self.0;
         loop {
-            /*while let Some(pkt) = brain_helper::read_pkt_serial() {
-                match pkt {
-                    ToBrain::RequestDeviceInfo => {
-                        brain_helper::write_pkt_serial(handler.get_device_list());
-                    }
-                    ToBrain::RequestControllerInfo => {}
-                    ToBrain::SetMotors(targets) => handler.set_motors(targets),
-                    ToBrain::RequestCompState => {
-                        brain_helper::write_pkt_serial(ToRobot::CompState(
-                            protocol::CompState::Auton,
-                        ));
-                    }
-                    ToBrain::RequestEncoderState => {}
-                    ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(gearsets),
-                    ToBrain::Ping(v) => {
-                        brain_helper::write_pkt_serial(ToRobot::Pong(v));
-                    }
-                }
-            }*/
-
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
         }
     }
 
     async fn driver(&mut self) {
         let handler = &mut self.0;
-        /*vexide::devices::screen::Text::new(":3", vexide::devices::screen::TextSize::Large, [0, 0])
-        .fill(&mut handler.screen, 0xFFFFFFu32);*/
-        let mut counter = 0;
         let mut num_packets = 0;
         loop {
             while let Some(ref pkt) = brain_helper::read_pkt_serial() {
                 vexide::devices::screen::Text::new(
-                    &alloc::format!("{pkt:?}"),
-                    vexide::devices::screen::TextSize::Large,
-                    [0, (counter % 5) * 30],
+                    &alloc::format!("{num_packets:?}"),
+                    vexide::devices::screen::TextSize::Medium,
+                    [0, 0],
                 )
                 .fill(&mut handler.screen, 0xFFFFFFu32);
-                vexide::devices::screen::Text::new(
-                    &alloc::format!("{counter:?}"),
-                    vexide::devices::screen::TextSize::Large,
-                    [0, 6 * 30],
-                )
-                .fill(&mut handler.screen, 0xFFFFFFu32);
-                counter += 1;
                 num_packets += 1;
 
                 handler.set_motors(pkt.set_motors);
                 handler.set_gearsets(pkt.set_motor_gearsets);
+                handler.set_triports(pkt.set_triports);
 
                 let mut to_robot_packet = ToRobot::default();
                 to_robot_packet.comp_state = protocol::CompState::Driver;
@@ -71,26 +42,6 @@ impl Compete for Robot {
                 to_robot_packet.encoder_state = handler.get_encoder_states();
 
                 brain_helper::write_pkt_serial(to_robot_packet);
-
-                /*match pkt {
-                    ToBrain::RequestDeviceInfo => {
-                        brain_helper::write_pkt_serial(handler.get_device_list());
-                    }
-                    ToBrain::RequestControllerInfo => {
-                        brain_helper::write_pkt_serial(handler.get_controller_state());
-                    }
-                    ToBrain::SetMotors(targets) => handler.set_motors(*targets),
-                    ToBrain::RequestCompState => {
-                        brain_helper::write_pkt_serial(ToRobot::CompState(
-                            protocol::CompState::Driver,
-                        ));
-                    }
-                    ToBrain::RequestEncoderState => {}
-                    ToBrain::SetMotorGearsets(gearsets) => handler.set_gearsets(*gearsets),
-                    ToBrain::Ping(v) => {
-                        brain_helper::write_pkt_serial(ToRobot::Pong(v.clone()));
-                    }
-                }*/
             }
 
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
@@ -113,8 +64,8 @@ pub enum SmartPortDevice {
     Encoder(RotationSensor),
 }
 
-use protocol::{AdiPortState, PortState};
-use vexide::devices::screen::Fill;
+use protocol::{AdiPortState, ConfigureAdiPort, PortState};
+use vexide::devices::{adi::digital::LogicLevel, screen::Fill};
 impl SmartPortDevice {
     pub fn get_type(&self) -> PortState {
         match self {
@@ -149,14 +100,77 @@ impl SmartPortDevice {
     }
 }
 
+#[derive(Debug)]
 pub enum AdiPortDevice {
     Raw(AdiPort),
+    AnalogIn(AdiAnalogIn),
+    DigitalOut(AdiDigitalOut, bool),
+    DigitalIn(AdiDigitalIn),
+    TransferState,
 }
+
 impl AdiPortDevice {
-    pub fn get_type(&self) -> AdiPortState {
+    pub fn get_state(&self) -> AdiPortState {
         match self {
-            _ => AdiPortState::Other,
+            Self::Raw(_) => AdiPortState::Other,
+            Self::AnalogIn(p) => match (p.value(), p.voltage()) {
+                (Ok(v), Ok(v2)) => AdiPortState::AnalogIn(Some((v, v2))),
+                _ => AdiPortState::AnalogIn(None),
+            },
+            Self::DigitalIn(p) => {
+                AdiPortState::DigitalIn(p.level().ok().map(|v| v == LogicLevel::High))
+            }
+            Self::DigitalOut(_, is_high) => AdiPortState::DigitalOut(*is_high),
+            Self::TransferState => AdiPortState::Other,
         }
+    }
+    pub fn into_raw(&mut self) {
+        if let Self::Raw(_) = self {
+            return;
+        }
+
+        match core::mem::replace(self, AdiPortDevice::TransferState) {
+            AdiPortDevice::DigitalOut(p, _) => {
+                *self = Self::Raw(p.into());
+            }
+            Self::AnalogIn(p) => {
+                *self = Self::Raw(p.into());
+            }
+            Self::DigitalIn(p) => {
+                *self = Self::Raw(p.into());
+            }
+            Self::TransferState | Self::Raw(_) => unreachable!(),
+        };
+    }
+    pub fn into_analog_in(&mut self) {
+        if let Self::AnalogIn(_) = self {
+            return;
+        }
+
+        self.into_raw();
+        if let Self::Raw(p) = core::mem::replace(self, AdiPortDevice::TransferState) {
+            *self = Self::AnalogIn(AdiAnalogIn::new(p.into()));
+        };
+    }
+    pub fn into_digital_in(&mut self) {
+        if let Self::DigitalIn(_) = self {
+            return;
+        }
+
+        self.into_raw();
+        if let Self::Raw(p) = core::mem::replace(self, AdiPortDevice::TransferState) {
+            *self = Self::DigitalIn(AdiDigitalIn::new(p.into()));
+        };
+    }
+    pub fn into_digital_out(&mut self) {
+        if let Self::DigitalOut(_, _) = self {
+            return;
+        }
+
+        self.into_raw();
+        if let Self::Raw(p) = core::mem::replace(self, AdiPortDevice::TransferState) {
+            *self = Self::DigitalOut(AdiDigitalOut::new(p.into()), false);
+        };
     }
 }
 
@@ -179,6 +193,35 @@ impl ComponentHandler {
             }
         }
     }
+    pub fn set_triports(&mut self, targets: [protocol::ConfigureAdiPort; 8]) {
+        for (target, triport) in targets.iter().zip(self.adi_ports.iter_mut()) {
+            match target {
+                ConfigureAdiPort::None => {}
+                ConfigureAdiPort::AnalogIn => triport.into_analog_in(),
+                ConfigureAdiPort::DigitalLow => {
+                    triport.into_digital_out();
+                    if let AdiPortDevice::DigitalOut(p, is_high) = triport {
+                        if *is_high {
+                            if let Ok(_) = p.set_low() {
+                                *is_high = false;
+                            }
+                        }
+                    }
+                }
+                ConfigureAdiPort::DigitalHigh => {
+                    triport.into_digital_out();
+                    if let AdiPortDevice::DigitalOut(p, is_high) = triport {
+                        if !*is_high {
+                            if let Ok(_) = p.set_high() {
+                                *is_high = true;
+                            }
+                        }
+                    }
+                }
+                ConfigureAdiPort::DigitalIn => triport.into_digital_in(),
+            }
+        }
+    }
     pub fn set_gearsets(&mut self, gearsets: [protocol::GearSetChange; 21]) {
         for (gearset_change, motor) in gearsets.iter().zip(self.smart_ports.iter_mut()) {
             let v: Option<vexide::devices::smart::motor::Gearset> = (*gearset_change).into();
@@ -193,7 +236,7 @@ impl ComponentHandler {
     pub fn get_device_list(&self) -> DevicesList {
         DevicesList {
             smart_ports: self.smart_ports.each_ref().map(|v| v.get_type()),
-            adi_ports: self.adi_ports.each_ref().map(|v| v.get_type()),
+            adi_ports: self.adi_ports.each_ref().map(|v| v.get_state()),
         }
     }
     pub fn get_encoder_states(&mut self) -> [EncoderState; 21] {
