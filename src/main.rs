@@ -12,8 +12,30 @@ struct Robot(ComponentHandler);
 
 impl Compete for Robot {
     async fn autonomous(&mut self) {
-        let _handler = &mut self.0;
+        let handler = &mut self.0;
+        let mut num_packets = 0;
         loop {
+            while let Some(ref pkt) = brain_helper::read_pkt_serial() {
+                vexide::devices::screen::Text::new(
+                    &alloc::format!("{num_packets:?}"),
+                    vexide::devices::screen::TextSize::Medium,
+                    [0, 0],
+                )
+                .fill(&mut handler.screen, 0xFFFFFFu32);
+                num_packets += 1;
+
+                handler.set_motors(pkt.set_motors);
+                handler.set_gearsets(pkt.set_motor_gearsets);
+                handler.set_triports(pkt.set_triports);
+
+                let mut to_robot_packet = ToRobot::default();
+                to_robot_packet.comp_state = protocol::CompState::Auton;
+                to_robot_packet.device_list = Some(handler.get_device_list());
+                to_robot_packet.encoder_state = handler.get_encoder_states();
+
+                brain_helper::write_pkt_serial(to_robot_packet);
+            }
+
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
         }
     }
@@ -40,6 +62,7 @@ impl Compete for Robot {
                 to_robot_packet.device_list = Some(handler.get_device_list());
                 to_robot_packet.controller_state = Some(handler.get_controller_state());
                 to_robot_packet.encoder_state = handler.get_encoder_states();
+                to_robot_packet.imu_state = handler.get_imu_states();
 
                 brain_helper::write_pkt_serial(to_robot_packet);
             }
@@ -62,6 +85,7 @@ pub enum SmartPortDevice {
     Raw(SmartPort),
     Motor(Motor),
     Encoder(RotationSensor),
+    Imu(InertialSensor),
 }
 
 use protocol::{AdiPortState, ConfigureAdiPort, PortState};
@@ -73,6 +97,7 @@ impl SmartPortDevice {
             Self::Raw(sp) => sp.device_type().into(),
             Self::Motor(_) => PortState::Motor,
             Self::Encoder(_) => PortState::Encoder,
+            Self::Imu(_) => PortState::Imu,
         }
     }
     // TODO: improve state handling
@@ -91,6 +116,16 @@ impl SmartPortDevice {
                 let old = core::mem::take(self);
                 if let SmartPortDevice::Raw(sp) = old {
                     *self = SmartPortDevice::Encoder(RotationSensor::new(sp, Direction::Forward));
+                } else {
+                    *self = old;
+                }
+            }
+            PortState::Imu => {
+                let old = core::mem::take(self);
+                if let SmartPortDevice::Raw(sp) = old {
+                    let mut imu = InertialSensor::new(sp);
+                    let _ = imu.calibrate();
+                    *self = SmartPortDevice::Imu(imu);
                 } else {
                     *self = old;
                 }
@@ -253,6 +288,24 @@ impl ComponentHandler {
         }
         encoder_states
     }
+    pub fn get_imu_states(&mut self) -> [ImuState; 21] {
+        let mut imu_states = [protocol::ImuState::None; 21];
+        for (i, possible_smart_port) in self.smart_ports.iter_mut().enumerate() {
+            if possible_smart_port.get_type() == PortState::Imu {
+                possible_smart_port.transform(PortState::Imu);
+                if let SmartPortDevice::Imu(imu) = possible_smart_port {
+                    if let (Ok(z_rotation), Ok(rate)) = (imu.rotation(), imu.gyro_rate()) {
+                        imu_states[i] = protocol::ImuState::State {
+                            z_rotation,
+                            z_rate: rate.x,
+                        }
+                    }
+                }
+            }
+        }
+        imu_states
+    }
+
     pub fn get_controller_state(&self) -> ControllerState {
         use protocol::controller::*;
         let mut controller_state = protocol::ControllerState::default();
