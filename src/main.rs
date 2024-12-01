@@ -15,7 +15,7 @@ impl Compete for Robot {
         let handler = &mut self.0;
         let mut num_packets = 0;
         loop {
-            while let Some(ref pkt) = brain_helper::read_pkt_serial() {
+            if let Some(ref pkt) = brain_helper::read_pkt_serial() {
                 vexide::devices::screen::Text::new(
                     &alloc::format!("{num_packets:?}"),
                     vexide::devices::screen::TextSize::Medium,
@@ -27,24 +27,24 @@ impl Compete for Robot {
                 handler.set_motors(pkt.set_motors);
                 handler.set_gearsets(pkt.set_motor_gearsets);
                 handler.set_triports(pkt.set_triports);
-
-                let mut to_robot_packet = ToRobot::default();
-                to_robot_packet.comp_state = protocol::CompState::Auton;
-                to_robot_packet.device_list = Some(handler.get_device_list());
-                to_robot_packet.encoder_state = handler.get_encoder_states();
-
-                brain_helper::write_pkt_serial(to_robot_packet);
             }
 
+            let mut to_robot_packet = ToRobot::default();
+            to_robot_packet.comp_state = protocol::CompState::Auton;
+            to_robot_packet.device_list = Some(handler.get_device_list());
+            to_robot_packet.encoder_state = handler.get_encoder_states();
+
+            brain_helper::write_pkt_serial(to_robot_packet);
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
         }
     }
+    
 
     async fn driver(&mut self) {
         let handler = &mut self.0;
         let mut num_packets = 0;
         loop {
-            while let Some(ref pkt) = brain_helper::read_pkt_serial() {
+            if let Some(ref pkt) = brain_helper::read_pkt_serial() {
                 vexide::devices::screen::Text::new(
                     &alloc::format!("{num_packets:?}"),
                     vexide::devices::screen::TextSize::Medium,
@@ -56,17 +56,16 @@ impl Compete for Robot {
                 handler.set_motors(pkt.set_motors);
                 handler.set_gearsets(pkt.set_motor_gearsets);
                 handler.set_triports(pkt.set_triports);
-
-                let mut to_robot_packet = ToRobot::default();
-                to_robot_packet.comp_state = protocol::CompState::Driver;
-                to_robot_packet.device_list = Some(handler.get_device_list());
-                to_robot_packet.controller_state = Some(handler.get_controller_state());
-                to_robot_packet.encoder_state = handler.get_encoder_states();
-                to_robot_packet.imu_state = handler.get_imu_states();
-
-                brain_helper::write_pkt_serial(to_robot_packet);
             }
 
+            let mut to_robot_packet = ToRobot::default();
+            to_robot_packet.comp_state = protocol::CompState::Driver;
+            to_robot_packet.device_list = Some(handler.get_device_list());
+            to_robot_packet.controller_state = Some(handler.get_controller_state());
+            to_robot_packet.encoder_state = handler.get_encoder_states();
+            to_robot_packet.imu_state = handler.get_imu_states();
+
+            brain_helper::write_pkt_serial(to_robot_packet);
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
         }
     }
