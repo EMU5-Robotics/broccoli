@@ -38,7 +38,6 @@ impl Compete for Robot {
             vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
         }
     }
-    
 
     async fn driver(&mut self) {
         let handler = &mut self.0;
@@ -278,10 +277,19 @@ impl ComponentHandler {
         for (i, possible_smart_port) in self.smart_ports.iter_mut().enumerate() {
             if possible_smart_port.get_type() == PortState::Encoder {
                 possible_smart_port.transform(PortState::Encoder);
-                if let SmartPortDevice::Encoder(encoder) = possible_smart_port {
-                    if let Ok(angle) = encoder.angle() {
-                        encoder_states[i] = protocol::EncoderState::Radians(angle.as_radians());
+                match possible_smart_port {
+                    SmartPortDevice::Encoder(encoder) => {
+                        if let Ok(angle) = encoder.angle() {
+                            encoder_states[i] = protocol::EncoderState::Radians(angle.as_radians());
+                        }
                     }
+                    SmartPortDevice::Motor(motor) => {
+                        if let Ok(position) = motor.position() {
+                            encoder_states[i] =
+                                protocol::EncoderState::Radians(position.as_radians());
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
