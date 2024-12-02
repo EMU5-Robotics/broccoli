@@ -8,17 +8,21 @@ use brain_helper::{
     vexide::{self, prelude::*},
 };
 
+use vexide::devices::screen::{self, Screen};
+
 struct Robot(ComponentHandler);
 
 impl Compete for Robot {
     async fn autonomous(&mut self) {
         let handler = &mut self.0;
         let mut num_packets = 0;
+        let mut quadrant: u8 = 0;
+        let mut text_col: u32 = 0;
         loop {
             if let Some(ref pkt) = brain_helper::read_pkt_serial() {
-                vexide::devices::screen::Text::new(
+                screen::Text::new(
                     &alloc::format!("{num_packets:?}"),
-                    vexide::devices::screen::TextSize::Medium,
+                    screen::TextSize::Medium,
                     [0, 0],
                 )
                 .fill(&mut handler.screen, 0xFFFFFFu32);
@@ -29,8 +33,41 @@ impl Compete for Robot {
                 handler.set_triports(pkt.set_triports);
             }
 
+            let touch_status = handler.screen.touch_status();
+
+            if touch_status.state == screen::TouchState::Pressed {
+                match (
+                    touch_status.x < Screen::HORIZONTAL_RESOLUTION / 2,
+                    touch_status.y < Screen::VERTICAL_RESOLUTION / 2,
+                ) {
+                    (true, true) => {
+                        quadrant = 0;
+                        text_col = 0xFFFFFFu32;
+                    }
+                    (false, true) => {
+                        quadrant = 1;
+                        text_col = 0xFF0000u32;
+                    }
+                    (true, false) => {
+                        quadrant = 2;
+                        text_col = 0x00FF00u32;
+                    }
+                    (false, false) => {
+                        quadrant = 3;
+                        text_col = 0x0000FFu32;
+                    }
+                }
+            }
+
+            screen::Text::new(
+                &alloc::format!("quadrant: {quadrant:?}"),
+                screen::TextSize::Large,
+                [0, 64],
+            )
+            .fill(&mut handler.screen, text_col);
+
             let mut to_robot_packet = ToRobot::default();
-            to_robot_packet.comp_state = protocol::CompState::Auton;
+            to_robot_packet.comp_state = protocol::CompState::Auton(quadrant);
             to_robot_packet.device_list = Some(handler.get_device_list());
             to_robot_packet.encoder_state = handler.get_encoder_states();
 
@@ -44,9 +81,9 @@ impl Compete for Robot {
         let mut num_packets = 0;
         loop {
             if let Some(ref pkt) = brain_helper::read_pkt_serial() {
-                vexide::devices::screen::Text::new(
+                screen::Text::new(
                     &alloc::format!("{num_packets:?}"),
-                    vexide::devices::screen::TextSize::Medium,
+                    screen::TextSize::Medium,
                     [0, 0],
                 )
                 .fill(&mut handler.screen, 0xFFFFFFu32);
