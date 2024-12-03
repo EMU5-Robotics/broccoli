@@ -314,19 +314,17 @@ impl ComponentHandler {
         for (i, possible_smart_port) in self.smart_ports.iter_mut().enumerate() {
             if possible_smart_port.get_type() == PortState::Encoder {
                 possible_smart_port.transform(PortState::Encoder);
-                match possible_smart_port {
-                    SmartPortDevice::Encoder(encoder) => {
-                        if let Ok(angle) = encoder.angle() {
-                            encoder_states[i] = protocol::EncoderState::Radians(angle.as_radians());
-                        }
+                if let SmartPortDevice::Encoder(encoder) = possible_smart_port {
+                    if let Ok(angle) = encoder.angle() {
+                        encoder_states[i] = protocol::EncoderState::Radians(angle.as_radians());
                     }
-                    SmartPortDevice::Motor(motor) => {
-                        if let Ok(position) = motor.position() {
-                            encoder_states[i] =
-                                protocol::EncoderState::Radians(position.as_radians());
-                        }
+                }
+            } else if possible_smart_port.get_type() == PortState::Motor {
+                possible_smart_port.transform(PortState::Motor);
+                if let SmartPortDevice::Motor(motor) = possible_smart_port {
+                    if let Ok(position) = motor.position() {
+                        encoder_states[i] = protocol::EncoderState::Radians(position.as_radians());
                     }
-                    _ => {}
                 }
             }
         }
