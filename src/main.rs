@@ -72,7 +72,7 @@ impl Compete for Robot {
             to_robot_packet.encoder_state = handler.get_encoder_states();
 
             brain_helper::write_pkt_serial(to_robot_packet);
-            vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
+            vexide::async_runtime::time::sleep(core::time::Duration::from_millis(5)).await;
         }
     }
 
@@ -102,7 +102,7 @@ impl Compete for Robot {
             to_robot_packet.imu_state = handler.get_imu_states();
 
             brain_helper::write_pkt_serial(to_robot_packet);
-            vexide::async_runtime::time::sleep(core::time::Duration::from_millis(1)).await;
+            vexide::async_runtime::time::sleep(core::time::Duration::from_millis(5)).await;
         }
     }
 }
